@@ -1,0 +1,30 @@
+# test project files
+test-project/dist
+
+# own module files
+#gas-project.json
+
+# working files
+/tmp/
+
+# node
+node_modules
+package-lock.json
+
+# clasp
+.clasprc.json
+
+# other
+.vscode
+*.code-workspace
+*.sublime-workspace
+*.sublime-project
+
+# logs
+logs
+*.log
+
+# OS files
+*.bak
+.DS_Store
+thumbs.db
