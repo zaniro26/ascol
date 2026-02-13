@@ -8,77 +8,67 @@ async function deploy(options) {
   const { new: isNew, name, target, src, version: versionOption, description } = options;
 
   try {
-    // Load config from config file instead of gas-project.json
     const config = await getConfig();
     config.deployments = config.deployments || [];
 
-    let activeVersion;
+    let activeVersion; // claspに渡す -v の値
     let targetDeploymentId = null;
 
-    // --- 1. Identify Source ---
+    // --- 1. Version (Resource) の特定 ---
     if (src === 'head') {
-      console.log(chalk.blue('🚀 Preparation: Use latest code from HEAD'));
-    } else if (src) {
-      // Copy version from existing environment (e.g., src === 'stage')
-      const srcEnv = config.deployments.find(d => d.name === src);
-      if (!srcEnv) throw new Error(`Source environment "${src}" not found in config.`);
-
-      const remoteList = await getDeployments(); 
-      const remoteSrc = remoteList.find(d => d.deploymentId === srcEnv.id);
-      
-      if (!remoteSrc) throw new Error(`Deployment ID for "${src}" was not found on Google Cloud.`);
-      
-      activeVersion = remoteSrc.versionNumber;
-      console.log(chalk.green(`✔ Using Version ${activeVersion} from "${src}".`));
-
-    } else if (versionOption) {
-      activeVersion = versionOption;
+      // 新規バージョン作成時は activeVersion を指定しない（claspが最新を固める）
+      console.log(chalk.blue('🚀 Preparation: Creating a new version from HEAD'));
     } else {
-      throw new Error('Source missing. Use --src head, --src [name], or --version [num].');
+      // 既存の何かからバージョン番号を取得する
+      if (versionOption) {
+        activeVersion = versionOption;
+      } else if (src) {
+        // 環境名(test等)からIDを引き、リモートのバージョン番号を特定する
+        const srcEnv = config.deployments.find(d => d.name === src);
+        if (!srcEnv) throw new Error(`Source environment "${src}" not found in config.`);
+
+        const remoteList = await getDeployments(); 
+        const remoteSrc = remoteList.find(d => d.deploymentId === srcEnv.id);
+        if (!remoteSrc) throw new Error(`Deployment ID for "${src}" was not found on Google Cloud.`);
+        
+        activeVersion = remoteSrc.versionNumber;
+        console.log(chalk.green(`✔ Using Version ${activeVersion} from "${src}".`));
+      }
     }
 
-    // --- 2. Deploy to Target ---
-    if (isNew) {
-      if (!description) throw new Error('--description (-d) is required when using --new.');
-      if (!name) throw new Error('--name is required when using --new.');
-      if (!src && !versionOption) throw new Error('Either --src or --version(-v) must be specified when using --new.');
-      if (src && versionOption) throw new Error('Cannot use both --src and --version(-v) options together.');
-      
-      let output = '';
-      if (src === 'head') {
-        console.log(chalk.blue('🚀 Creating a new version from HEAD...'));
-        output = await runClasp(description ? ['deploy', '--description', description] : ['deploy']);
-      } else {
-        const sourceRef = src ? `version ${activeVersion} from ${src}` : `version ${activeVersion}`;
-        console.log(chalk.blue(`🚀 Creating new deployment "${name}" from ${sourceRef}...`));
-        output = await runClasp(['deploy', '-v', activeVersion, '--description', description]);
-      }
+    // --- 2. Deployment 実行 ---
+    let claspArgs = ['deploy'];
 
-      // Parse clasp output to get ID and Version
+    // 【軸A】新規デプロイ環境か、既存の更新か
+    if (!isNew) {
+      // target（既存環境名）からIDを特定して指定
+      const targetEnv = config.deployments.find(d => d.name === target);
+      if (!targetEnv) throw new Error(`Target environment "${target}" is not registered.`);
+      claspArgs.push('-i', targetEnv.id);
+    }
+
+    // 【軸B】新規バージョン作成(head)か、既存バージョン指定か
+    if (src === 'head') {
+      // 新規作成時は description が必須
+      claspArgs.push('-d', description);
+    } else {
+      // 既存バージョンをデプロイメントに紐付ける
+      claspArgs.push('-v', activeVersion);
+    }
+
+    // --- 3. 実行 ---
+    console.log(chalk.cyan(`> Executing: clasp ${claspArgs.join(' ')}`));
+    const output = await runClasp(claspArgs);
+
+    // --- 4. 後処理 (新規作成時のみ config 保存) ---
+    if (isNew) {
       const match = output.match(/Deployed\s+([^\s@]+)\s+@(\d+)/);
       if (!match) {
         throw new Error('Failed to parse clasp deploy output.');
       }
-
+      
       targetDeploymentId = match[1];
-      activeVersion = parseInt(match[2], 10);
-      
-      console.log(chalk.gray(`Created Version: ${activeVersion}`));
-      console.log(chalk.green(`✔ Registered new environment: "${name}"`));
-      
-      // Update config via setId
       await setId(name, targetDeploymentId);
-
-    } else {
-      if (!target) throw new Error('--target is required for updating existing environments.');
-      const targetEnv = config.deployments.find(d => d.name === target);
-      if (!targetEnv) throw new Error(`Target environment "${target}" is not registered.`);
-
-      console.log(chalk.blue(`🚀 Updating "${target}" to Version ${activeVersion}...`));
-      await runClasp(['deploy', '--deploymentId', targetEnv.id, '--versionNumber', activeVersion]);
-      
-      // Refresh config via setId
-      await setId(target, targetEnv.id);
     }
 
     console.log(chalk.magenta('\n✨ All operations completed successfully.'));

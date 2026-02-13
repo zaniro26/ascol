@@ -5,41 +5,38 @@ const os = require('os');
 const path = require('path');
 
 const { spawn } = require('child_process');
+const which = require('which');
 
 /**
  * Execute clasp commands
  */
 function runClasp(args, options = {}) {
-  return new Promise((resolve, reject) => {
-    // Windows compatibility: shell: true is required for npm commands like 'clasp'
-    const spawnOptions = { 
-      shell: true,
-      stdio: options.silent ? 'pipe' : 'inherit' 
-    };
+  // execa は Promise を返すので、async/await も使えますが
+  // 既存の Promise 形式に合わせた書き方にします
+  const child = execa('clasp', args, {
+    shell: false, // 安全。execaならWindowsでもこれで動く
+    all: true     // stdout と stderr を統合して取得
+  });
 
-    const clasp = spawn('clasp', args, spawnOptions);
+  let stdout = '';
 
-    let stdout = '';
-    let stderr = '';
+  // リアルタイムに画面に出力する（deploy時の進捗が見える）
+  child.stdout.on('data', (data) => {
+    stdout += data.toString();
+    if (!options.silent) process.stdout.write(data);
+  });
 
-    if (options.silent) {
-      clasp.stdout.on('data', (data) => { stdout += data.toString(); });
-      clasp.stderr.on('data', (data) => { stderr += data.toString(); });
-    }
+  child.stderr.on('data', (data) => {
+    // 警告やエラーも画面に出す
+    if (!options.silent) process.stderr.write(data);
+  });
 
-    clasp.on('close', (code) => {
-      if (code === 0) {
-        resolve(options.silent ? stdout : '');
-      } else {
-        const errorMsg = options.silent ? stderr : `clasp exited with code ${code}`;
-        reject(new Error(errorMsg));
-      }
-    });
-
-    // Handle spawn errors (like command not found)
-    clasp.on('error', (err) => {
-      reject(new Error(`Failed to start clasp: ${err.message}`));
-    });
+  return child.then((result) => {
+    // 成功時：蓄積した stdout を返す
+    return stdout;
+  }).catch((err) => {
+    // 失敗時：エラーを投げる
+    throw new Error(err.stderr || err.message);
   });
 }
 

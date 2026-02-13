@@ -56,13 +56,52 @@ program
   .command('deploy')
   .description('Manage GAS deployments and environments')
   .option('--new', 'Create a new deployment ID')
-  .option('-n, --name <name>', 'Name for the new environment')
-  .option('-t, --target <target>', 'Target environment name to update')
+  .option('-t, --target <target>', 'Update a target deploy environment name')
+  .option('-n, --name <name>', 'Name for the new deploy environment')
   .option('-s, --src <source>', 'Source: "head" or existing environment name')
   .option('-v, --version <number>', 'Source: specific version number')
-  .option('-d, --description <text>', 'Deployment description')
+  .option('-d, --description <text>', 'New deployment version description')
   .hook('preAction', ensureLogin)
-  .action(deploy);
+  .action(async (options) => {
+    // --- 1. Type of deployment ---
+    if (!options.new && !options.target) {
+      console.error('Error: --new or --target is required (type of deployment)');
+      process.exit(1);
+    }
+    if (options.new && options.target) {
+      console.error('Error: Cannot specify both --new and --target.');
+      process.exit(1);
+    }
+
+    // --- 2. Deployment resource ---
+    if (!options.src && !options.version) {
+      console.error('Error: --src or --version (-v) is required.');
+      process.exit(1);
+    }
+    if (options.src && options.version) {
+      console.error('Error: Cannot specify both --src and --version.');
+      process.exit(1);
+    }
+
+    // --- 3. Name check for new deployment ---
+    if (options.new && !options.name) {
+      console.error('Error: --name is required when using --new.');
+      process.exit(1);
+    }
+
+    // --- 4. Description check for new version (src: head) ---
+    const isHead = options.src === 'head';
+    if (isHead) {
+      if (!options.description) {
+        console.error('Error: --description (-d) is required when --src is "head".');
+        process.exit(1);
+      }
+    } else if (options.description) {
+      console.warn('Warning: --description is ignored when not creating a new version from "head".');
+    }
+    
+    await deploy(options);
+  });
 
 // set-id
 program
