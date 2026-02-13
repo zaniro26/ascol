@@ -1,0 +1,18 @@
+{
+  "name": "ascol",
+  "version": "0.8.0",
+  "description": "Simplified Google Apps Script deploy management: A user-friendly clasp wrapper.",
+  "main": "bin/ascol.js",
+  "bin": {
+    "ascol": "./bin/ascol.js"
+  },
+  "scripts": {
+    "test": "echo \"Error: no test specified\" && exit 1"
+  },
+  "dependencies": {
+    "chalk": "^4.1.2",
+    "commander": "^11.0.0",
+    "execa": "^5.1.1",
+    "fs-extra": "^11.1.1"
+  }
+}

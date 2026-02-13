@@ -1,0 +1,30 @@
+{
+  "srcDir": "src",
+  "distDir": "dist",
+  "deployments": [
+    {
+      "name": "head",
+      "id": "AKfycbx6Zf5g6XGFz9lk0U5g6vk1hQlUfz2STPUhZdfF3ARI"
+    },
+    {
+      "name": "test",
+      "id": "AKfycbzr46V1iffqBqlc5KHcz0sEI5SB-G8Ty_RVMAaDFVLjfa8DBQwOIQVl421ed6KDoHImvA"
+    },
+    {
+      "name": "release",
+      "id": "AKfycbzxso7PAnwcwzBAWb6muWXxVkW4Gywz0lT96ShXrx5YrRJ_8ZWiYjpcSAM2vMcrnHqn-g"
+    },
+    {
+      "name": "comtest1",
+      "id": "AKfycbxzm4Rx5HRw4fBDSkZCMwsQKG4Bn6uwKkW72EiA8fTeZodVzocpNNybG5PnfufLIwIFbA"
+    },
+    {
+      "name": "comtest2",
+      "id": "AKfycbzCdkfxWgEfzUVKraJtHo3Bc279ZwrhEUAC4cN23VzjP579xRGkLgazZReXwwvsWF0-Rg"
+    },
+    {
+      "name": "comtest3",
+      "id": "AKfycbyheb4LeF4LSI4MP0ms52eCoRZVkdXbKsELNtwar57Wf3Ws7FhpmvdfGd-ODhZZjUqEhw"
+    }
+  ]
+}
