@@ -1,7 +1,7 @@
 const fs = require('fs-extra');
 const chalk = require('chalk');
 const { runClasp, getDeployments } = require('../utils/clasp');
-const { getConfig } = require('../utils/config'); // Use shared config
+const { getConfig } = require('../utils/config');
 const setId = require('./set-id');
 
 async function deploy(options) {
@@ -11,19 +11,19 @@ async function deploy(options) {
     const config = await getConfig();
     config.deployments = config.deployments || [];
 
-    let activeVersion; // claspに渡す -v の値
+    let activeVersion; // Version number to pass to clasp -v
     let targetDeploymentId = null;
 
-    // --- 1. Version (Resource) の特定 ---
+    // --- 1. Identify Version (Resource) ---
     if (src === 'head') {
-      // 新規バージョン作成時は activeVersion を指定しない（claspが最新を固める）
+      // For new versions, activeVersion is not specified (clasp creates it from HEAD)
       console.log(chalk.blue('🚀 Preparation: Creating a new version from HEAD'));
     } else {
-      // 既存の何かからバージョン番号を取得する
+      // Retrieve version number from existing sources
       if (versionOption) {
         activeVersion = versionOption;
       } else if (src) {
-        // 環境名(test等)からIDを引き、リモートのバージョン番号を特定する
+        // Resolve deployment ID from environment name (e.g., 'test') and fetch its remote version
         const srcEnv = config.deployments.find(d => d.name === src);
         if (!srcEnv) throw new Error(`Source environment "${src}" not found in config.`);
 
@@ -36,31 +36,31 @@ async function deploy(options) {
       }
     }
 
-    // --- 2. Deployment 実行 ---
+    // --- 2. Build Deployment Arguments ---
     let claspArgs = ['deploy'];
 
-    // 【軸A】新規デプロイ環境か、既存の更新か
+    // [Axis A] New deployment environment vs. Updating existing one
     if (!isNew) {
-      // target（既存環境名）からIDを特定して指定
+      // Specify ID resolved from target environment name
       const targetEnv = config.deployments.find(d => d.name === target);
       if (!targetEnv) throw new Error(`Target environment "${target}" is not registered.`);
       claspArgs.push('-i', targetEnv.id);
     }
 
-    // 【軸B】新規バージョン作成(head)か、既存バージョン指定か
+    // [Axis B] Create new version from HEAD vs. Use existing version number
     if (src === 'head') {
-      // 新規作成時は description が必須
+      // Description is mandatory when creating a new version
       claspArgs.push('-d', description);
     } else {
-      // 既存バージョンをデプロイメントに紐付ける
+      // Bind an existing version to the deployment
       claspArgs.push('-v', activeVersion);
     }
 
-    // --- 3. 実行 ---
+    // --- 3. Execution ---
     console.log(chalk.cyan(`> Executing: clasp ${claspArgs.join(' ')}`));
     const output = await runClasp(claspArgs);
 
-    // --- 4. 後処理 (新規作成時のみ config 保存) ---
+    // --- 4. Post-processing (Save config for new deployments) ---
     if (isNew) {
       const match = output.match(/Deployed\s+([^\s@]+)\s+@(\d+)/);
       if (!match) {

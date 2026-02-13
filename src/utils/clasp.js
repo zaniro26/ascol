@@ -4,53 +4,62 @@ const fs = require('fs-extra');
 const os = require('os');
 const path = require('path');
 
-const { spawn } = require('child_process');
-const which = require('which');
-
 /**
- * Execute clasp commands
+ * Execute clasp commands using execa.
+ * This handles cross-platform path resolution and safe argument passing.
+ * @param {string[]} args - Command line arguments for clasp.
+ * @param {Object} options - Execution options.
+ * @param {boolean} options.silent - If true, suppresses output to the console.
+ * @returns {Promise<string>} - The standard output of the command.
  */
 function runClasp(args, options = {}) {
-  // execa は Promise を返すので、async/await も使えますが
-  // 既存の Promise 形式に合わせた書き方にします
+  // execa handles '.cmd' resolution automatically on Windows when shell: false
   const child = execa('clasp', args, {
-    shell: false, // 安全。execaならWindowsでもこれで動く
-    all: true     // stdout と stderr を統合して取得
+    shell: false,
+    all: true
   });
 
   let stdout = '';
 
-  // リアルタイムに画面に出力する（deploy時の進捗が見える）
+  // Stream output to process.stdout in real-time unless silent option is enabled
   child.stdout.on('data', (data) => {
     stdout += data.toString();
-    if (!options.silent) process.stdout.write(data);
+    if (!options.silent) {
+      process.stdout.write(data);
+    }
   });
 
+  // Stream errors/warnings to process.stderr
   child.stderr.on('data', (data) => {
-    // 警告やエラーも画面に出す
-    if (!options.silent) process.stderr.write(data);
+    if (!options.silent) {
+      process.stderr.write(data);
+    }
   });
 
   return child.then((result) => {
-    // 成功時：蓄積した stdout を返す
+    // Return the accumulated stdout on success
     return stdout;
   }).catch((err) => {
-    // 失敗時：エラーを投げる
-    throw new Error(err.stderr || err.message);
+    // Standardize error reporting
+    throw new Error(err.stderr || `Clasp execution failed: ${err.message}`);
   });
 }
 
 /**
- * Get all deployments as a JSON array
+ * Fetch all remote deployments as a JSON array.
  * @returns {Promise<Object[]>}
  */
 async function getDeployments() {
-  const { stdout } = await execa('clasp', ['deployments', '--json'], { silent: true });
-  return JSON.parse(stdout);
+  const stdout = await runClasp(['deployments', '--json'], { silent: true });
+  try {
+    return JSON.parse(stdout);
+  } catch (e) {
+    throw new Error('Failed to parse remote deployments list.');
+  }
 }
 
 /**
- * Get the current version number for a specific deployment ID
+ * Get the version number for a specific deployment ID.
  * @param {string} targetId 
  * @returns {Promise<number>}
  */
@@ -62,7 +71,7 @@ async function getVersionById(targetId) {
 }
 
 /**
- * Check if clasp login config file exists
+ * Check if the clasp credentials file exists in the home directory.
  * @returns {Promise<boolean>}
  */
 async function checkLogin() {
@@ -71,11 +80,9 @@ async function checkLogin() {
 }
 
 /**
- * 
+ * Ensure the user is logged in. Exits process if credentials are missing.
  */
 const ensureLogin = async () => {
-  const loginConfigPath = path.join(os.homedir(), '.clasprc.json');
-
   if (!(await checkLogin())) {
     console.error(chalk.red('\nError: Clasp login credentials not found.'));
     console.error(chalk.gray(`Checked for: ${loginConfigPath}`));
