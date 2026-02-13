@@ -2,6 +2,24 @@
   "name": "ascol",
   "version": "0.8.1",
   "description": "Simplified Google Apps Script deploy management: A user-friendly clasp wrapper.",
+  "author": "Zaniro26 <zaniro26@gmail.com> (https://github.com/zaniro26/)",
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/zaniro26/ascol.git"
+  },
+  "bugs": {
+    "url": "https://github.com/zaniro26/ascol/issues"
+  },
+  "homepage": "https://github.com/zaniro26/ascol#readme",
+  "keywords": [
+    "google-apps-script",
+    "clasp",
+    "gas",
+    "gas webapp",
+    "workflow",
+    "deployment"
+  ],
   "bin": {
     "ascol": "bin/ascol.js"
   },
