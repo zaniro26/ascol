@@ -4,11 +4,15 @@ const chalk = require('chalk');
 const { getConfig } = require('../utils/config');
 
 /**
- * Build process: Clean distDir and copy/transform files from srcDir
+ * Build process: 
+ * 1. Clean distDir
+ * 2. If file matches transpile rules (CSS or client JS), wrap in tags and save as .html
+ * 3. Otherwise (appsscript.json, server JS, etc.), copy directly
  */
 async function build() {
   try {
-    const { srcDir, distDir } = await getConfig();
+    const { build: buildConfig } = await getConfig();
+    const { srcDir, distDir, transpile } = buildConfig;
 
     console.log(chalk.blue('🚀 Building and transforming files...'));
 
@@ -19,53 +23,67 @@ async function build() {
 
     // Clean dist directory while preserving appsscript.json
     if (await fs.pathExists(distDir)) {
-      const items = await fs.readdir(distDir);
-      for (const item of items) {
-        if (item !== 'appsscript.json') {
-          await fs.remove(path.join(distDir, item));
-          console.log(chalk.gray(`  [Removed] ${item}`));
-        }
-      }
+      await fs.emptyDir(distDir);
     } else {
       await fs.ensureDir(distDir);
     }
 
-    // Recursive copy and transform function
-    const copyAndTransform = async (s, d) => {
+    const normalize = (p) => path.normalize(p).replace(/\\/g, '/').replace(/\/$/, '');
+    const clientDirs = transpile.clientSourceDirs.map(d => normalize(d));
+
+    /**
+     * copyOrTransform
+     */
+    const copyOrTransform = async (s, d) => {
       const stats = await fs.stat(s);
+      const normalizedS = normalize(s);
 
       if (stats.isDirectory()) {
         await fs.ensureDir(d);
         const children = await fs.readdir(s);
         for (const child of children) {
-          await copyAndTransform(path.join(s, child), path.join(d, child));
+          await copyOrTransform(path.join(s, child), path.join(d, child));
         }
       } else {
         const ext = path.extname(s);
-        let content = await fs.readFile(s, 'utf8');
-        let targetPath = d;
+        const fileName = path.basename(s);
 
-        // Transformation: Wrap .js and .css into .html
-        if (ext === '.js' && !s.endsWith('appsscript.json')) {
-          content = `<script>\n\n${content}\n\n</script>`;
-          targetPath += '.html';
-        } else if (ext === '.css') {
-          content = `<style>\n\n${content}\n\n</style>`;
-          targetPath += '.html';
+        let shouldTranspile = false;
+        if (ext === '.css') {
+          shouldTranspile = true; // CSSは常に変換
+        } else if (ext === '.js') {
+          // クライアントディレクトリ配下のJSのみ変換
+          shouldTranspile = clientDirs.some(dir => normalizedS.startsWith(dir));
         }
 
+        if (shouldTranspile) {
+          let content = await fs.readFile(s, 'utf8');
+          // Transformation: Wrap .js and .css into .html
+          if (ext === '.js') {
+            content = `<script>\n\n${content}\n\n</script>`;
+          } else if (ext === '.css') {
+            content = `<style>\n\n${content}\n\n</style>`;
+          }
+          const targetPath = d + '.html';
         // Write file to target path
-        await fs.writeFile(targetPath, content);
-        console.log(chalk.gray(`  [Done] ${path.relative(process.cwd(), targetPath)}`));
+          await fs.writeFile(targetPath, content);
+          console.log(chalk.gray(`  [Transpiled] ${fileName} -> ${path.basename(targetPath)}`));
+        } else {
+          // copy
+          await fs.copy(s, d);
+          console.log(chalk.gray(`  [Copied]     ${fileName}`));
+        }
       }
     };
 
-    await copyAndTransform(srcDir, distDir);
-    console.log(chalk.green('✨ Build finished successfully.'));
+    // exec
+    await copyOrTransform(srcDir, distDir);
+    
+    console.log(chalk.green('\n✔ Build completed successfully.'));
 
   } catch (error) {
     console.error(chalk.red('\nBuild failed:'), error.message);
-    throw error;
+    process.exit(1);
   }
 }
 

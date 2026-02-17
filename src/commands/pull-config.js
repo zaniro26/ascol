@@ -14,7 +14,8 @@ async function pullConfig() {
   console.log(chalk.blue('Fetching the latest appsscript.json from Google...'));
 
   try {
-    const { srcDir, distDir } = await getConfig();
+    const { build } = await getConfig();
+    const { srcDir, distDir } = build;
 
     // 1. Create temporary working folder
     if (await fs.pathExists(tmpDir)) await fs.remove(tmpDir);
@@ -36,7 +37,7 @@ async function pullConfig() {
     
     try {
       process.chdir(tmpDir);
-      await runClasp(['pull']);
+      await runClasp(['pull'], { silent: true });
     } finally {
       process.chdir(originalCwd);
     }

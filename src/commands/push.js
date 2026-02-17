@@ -2,12 +2,13 @@ const fs = require('fs-extra');
 const path = require('path');
 const chalk = require('chalk');
 const { runClasp } = require('../utils/clasp');
-const { getConfig, COMMAND_NAME } = require('../utils/config'); // Import config utility
+const { getConfig, COMMAND_NAME } = require('../utils/config');
 const build = require('./build');
 
 async function push(options) {
   try {
-    const { distDir } = await getConfig(); // Get dynamic distDir
+    const { build: buildConfig } = await getConfig(); 
+    const { distDir } = buildConfig; // Get dynamic distDir
 
     // Check for clasp project file (.clasp.json)
     if (!(await fs.pathExists('.clasp.json'))) {

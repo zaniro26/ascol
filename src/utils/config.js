@@ -1,38 +1,66 @@
 const fs = require('fs-extra');
 const path = require('path');
+const os = require('os');
 
 const COMMAND_NAME    = 'ascol';
 const CONFIG_FILENAME = `${COMMAND_NAME}.json`;
 
 /**
- * Load configuration from the file.
- * Falls back to default values if the file or specific properties are missing.
- * @returns {Promise<Object>}
+ * ascol.json のデフォルト構造を定義
  */
-async function getConfig() {
-  if (!(await fs.pathExists(CONFIG_FILENAME))) {
-    return {
+function getDefaultConfig() {
+  return {
+    scriptId: '',
+    build: {
       srcDir: 'src',
       distDir: 'dist',
-      deployments: []
-    };
-  }
-  
-  const config = await fs.readJson(CONFIG_FILENAME);
-  
-  return {
-    srcDir: config.srcDir || 'src',
-    distDir: config.distDir || 'dist',
-    deployments: config.deployments || []
+      transpile: {
+        clientSourceDirs: ['src/client/'] // 文字列から配列に変更
+      }
+    },
+    deployments: []
   };
 }
 
 /**
- * Save configuration to the file.
- * @param {Object} config 
+ * 設定の読み込み（階層構造に対応したマージ）
  */
-async function saveConfig(config) {
-  await fs.writeJson(CONFIG_FILENAME, config, { spaces: 2 });
+async function getConfig() {
+  const defaultConfig = getDefaultConfig();
+
+  if (!(await fs.pathExists(CONFIG_FILENAME))) {
+    return defaultConfig;
+  }
+  
+  const fileConfig = await fs.readJson(CONFIG_FILENAME);
+  
+  // ネストされたオブジェクトを安全にマージ
+  return {
+    ...defaultConfig,
+    ...fileConfig,
+    build: {
+      ...defaultConfig.build,
+      ...(fileConfig.build || {}),
+      transpile: {
+        ...defaultConfig.build.transpile,
+        ...((fileConfig.build && fileConfig.build.transpile) || {})
+      }
+    }
+  };
 }
 
-module.exports = { getConfig, saveConfig, CONFIG_FILENAME, COMMAND_NAME };
+/**
+ * 設定の保存（OS標準の改行コードを適用）
+ */
+async function saveConfig(config) {
+  const jsonString = JSON.stringify(config, null, 2).replace(/\n/g, os.EOL);
+  await fs.writeFile(CONFIG_FILENAME, jsonString, 'utf8');
+}
+
+module.exports = { 
+  getConfig, 
+  saveConfig, 
+  getDefaultConfig, 
+  CONFIG_FILENAME, 
+  COMMAND_NAME 
+};

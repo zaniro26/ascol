@@ -14,6 +14,7 @@ const pkg = JSON.parse(fs.readFileSync(pkgPath, 'utf8'));
 const program = new Command();
 
 // sub command
+const init = require('../src/commands/init');
 const create = require('../src/commands/create');
 const build = require('../src/commands/build');
 const push = require('../src/commands/push');
@@ -27,6 +28,14 @@ program
   .description(pkg.description)
   .version(pkg.version)
   .usage('<command> [command options]');
+
+// init
+program
+  .command('init')
+  .description('Initialize ascol.json from an existing clasp project')
+  .option('--srcDir <path>', 'Source directory', 'src')
+  .option('--distDir <path>', 'Distribution directory', 'dist')
+  .action(init);
 
 // create
 program

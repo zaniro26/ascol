@@ -2,7 +2,7 @@ const fs = require('fs-extra');
 const path = require('path');
 const chalk = require('chalk');
 const { runClasp, getDeployments } = require('../utils/clasp');
-const { CONFIG_FILENAME, COMMAND_NAME } = require('../utils/config');
+const { getDefaultConfig, saveConfig, COMMAND_NAME } = require('../utils/config');
 const setId = require('./set-id');
 
 /**
@@ -32,23 +32,21 @@ async function create(options) {
     const headId = deployments[0]?.deploymentId || "";
 
     // Initialize config file structure
-    const gasProjectConfig = {
-      scriptId: claspConfig.scriptId,
-      srcDir: 'src',
-      distDir: 'dist',
-      deployments: []
-    };
-    await fs.writeJson(CONFIG_FILENAME, gasProjectConfig, { spaces: 2 });
-    console.log(chalk.green(`✔ Generated ${CONFIG_FILENAME}`));
+    const config = getDefaultConfig();
+    config.scriptId = claspConfig.scriptId;
     
-    // Register the initial 'head' deployment ID
-    await setId('head', headId);
+    if (headId) {
+      config.deployments.push({ name: 'head', id: headId });
+    }
+    await saveConfig(config);
 
     // 3. Prepare initial appsscript.json in src/
-    await fs.ensureDir('src');
-    if (await fs.pathExists('dist/appsscript.json')) {
-      await fs.copy('dist/appsscript.json', 'src/appsscript.json');
-      console.log(chalk.green('✔ Copied appsscript.json to src/'));
+    const { srcDir, distDir } = config.build;
+    await fs.ensureDir(srcDir);
+    
+    if (await fs.pathExists(path.join(distDir, 'appsscript.json'))) {
+      await fs.copy(path.join(distDir, 'appsscript.json'), path.join(srcDir, 'appsscript.json'));
+      console.log(chalk.green(`✔ Copied appsscript.json to ${srcDir}/`));
     }
 
     // 4. Guidance for Web Application setup
@@ -59,7 +57,7 @@ async function create(options) {
     console.log(` 1. Open the script editor in your browser:`);
     console.log(chalk.cyan(`    ${projectUrl}`));
     console.log('    Then, deploy as a Web App to enable HTTP(S) access.');
-    
+
     console.log(' 2. Run the following command to sync the latest appsscript.json:');
     console.log(chalk.cyan(`    ${COMMAND_NAME} pull-config`));
 
@@ -70,6 +68,7 @@ async function create(options) {
   } catch (error) {
     console.error(chalk.red('\nAn error occurred during creation. Please check the logs above.'));
     console.error(error.message);
+    process.exit(1);
   }
 }
 
