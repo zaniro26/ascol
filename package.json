@@ -1,6 +1,6 @@
 {
   "name": "ascol",
-  "version": "0.8.3-beta",
+  "version": "0.8.3",
   "description": "Simplified Google Apps Script deploy management: A user-friendly clasp wrapper.",
   "author": "Zaniro26 <zaniro26@gmail.com> (https://github.com/zaniro26/)",
   "license": "MIT",
