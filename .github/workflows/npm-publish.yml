@@ -1,0 +1,55 @@
+name: Publish to npm
+
+on:
+  release:
+    types: [published]
+
+jobs:
+  publish:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write      # タグの打ち直しとコミットに必要
+      id-token: write      # ★これがOIDC（Trusted Publishing）に必須の権限！
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          registry-url: 'https://registry.npmjs.org'
+
+      - name: Update package.json and Retag
+        run: |
+          git config --global user.name "github-actions[bot]"
+          git config --global user.email "github-actions[bot]@users.noreply.github.com"
+
+          TAG_NAME=${{ github.event.release.tag_name }}
+          VERSION_NUMBER=$(echo $TAG_NAME | sed 's/^v//')
+
+          # バージョン更新（コミットは後でまとめて）
+          npm version $VERSION_NUMBER --no-git-tag-version
+
+          # リリースノートをコミットメッセージに含めてコミット
+          git add package.json
+          git commit -m "chore(release): $TAG_NAME [skip ci]" -m "${{ github.event.release.body }}"
+
+          # タグを新コミットに強制移動してpush
+          git tag -f $TAG_NAME
+          git push -f origin $TAG_NAME
+
+          # Releaseが指す先を今のコミットに更新（API経由）
+          curl -L \
+            -X PATCH \
+            -H "Accept: application/vnd.github+json" \
+            -H "Authorization: Bearer ${{ secrets.GITHUB_TOKEN }}" \
+            https://api.github.com/repos/${{ github.repository }}/releases/${{ github.event.release.id }} \
+            -d "{\"target_commitish\":\"main\"}"
+
+      - name: Push package.json back to main
+        run: git push origin main
+
+      - name: Publish to npm
+        # no token needed here because we're using OIDC for authentication
+        run: npm publish --provenance --access public
