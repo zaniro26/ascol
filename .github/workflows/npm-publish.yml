@@ -8,8 +8,8 @@ jobs:
   publish:
     runs-on: ubuntu-latest
     permissions:
-      contents: write      # タグの打ち直しとコミットに必要
-      id-token: write      # ★これがOIDC（Trusted Publishing）に必須の権限！
+      contents: write  # allows pushing commits and tags
+      id-token: write  # allows using GITHUB_TOKEN for authentication (for OIDC)
     steps:
       - uses: actions/checkout@v4
         with:
@@ -26,9 +26,23 @@ jobs:
           git config --global user.email "github-actions[bot]@users.noreply.github.com"
 
           TAG_NAME=${{ github.event.release.tag_name }}
-          VERSION_NUMBER=$(echo $TAG_NAME | sed 's/^v//')
+          
+          # 先頭の記号を削る
+          CLEAN_TAG=$(echo $TAG_NAME | sed 's/^[^0-9.]*//')
 
-          # バージョン更新（コミットは後でまとめて）
+          # '@' があれば左をバージョン、右をnpmタグにする
+          if [[ "$CLEAN_TAG" == *"@"* ]]; then
+            VERSION_NUMBER=$(echo $CLEAN_TAG | cut -d'@' -f1)
+            NPM_DIST_TAG=$(echo $CLEAN_TAG | cut -d'@' -f2)
+          else
+            VERSION_NUMBER=$CLEAN_TAG
+            NPM_DIST_TAG="latest"
+          fi
+
+          echo "VERSION_NUMBER=$VERSION_NUMBER" >> $GITHUB_ENV
+          echo "NPM_DIST_TAG=$NPM_DIST_TAG" >> $GITHUB_ENV
+
+          # package.json 更新
           npm version $VERSION_NUMBER --no-git-tag-version
 
           # リリースノートをコミットメッセージに含めてコミット
@@ -39,7 +53,7 @@ jobs:
           git tag -f $TAG_NAME
           git push -f origin $TAG_NAME
 
-          # Releaseが指す先を今のコミットに更新（API経由）
+          # Releaseが指す先を今の新コミットに更新（API経由）
           curl -L \
             -X PATCH \
             -H "Accept: application/vnd.github+json" \
@@ -51,5 +65,4 @@ jobs:
         run: git push origin main
 
       - name: Publish to npm
-        # no token needed here because we're using OIDC for authentication
-        run: npm publish --provenance --access public
+        run: npm publish --provenance --access public --tag ${{ env.NPM_DIST_TAG }}
