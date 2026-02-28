@@ -25,10 +25,12 @@ jobs:
           git config --global user.name "github-actions[bot]"
           git config --global user.email "github-actions[bot]@users.noreply.github.com"
 
-          # 現在のブランチ名を取得（mainなど）
+          # リリースのターゲットブランチ（main等）を取得
           CURRENT_BRANCH=${{ github.event.release.target_commitish }}
           TAG_NAME=${{ github.event.release.tag_name }}
           
+          # 1. バージョンとnpmタグの抽出
+          # 先頭の記号を削る (v0.8.1@beta -> 0.8.1@beta)
           CLEAN_TAG=$(echo $TAG_NAME | sed 's/^[^0-9.]*//')
 
           if [[ "$CLEAN_TAG" == *"@"* ]]; then
@@ -42,28 +44,44 @@ jobs:
           echo "VERSION_NUMBER=$VERSION_NUMBER" >> $GITHUB_ENV
           echo "NPM_DIST_TAG=$NPM_DIST_TAG" >> $GITHUB_ENV
 
-          # package.json 更新
-          npm version $VERSION_NUMBER --no-git-tag-version
+          # 2. デバッグ情報の出力
+          CURRENT_VER=$(node -p "require('./package.json').version")
+          echo "--- Release Info ---"
+          echo "Tag: $TAG_NAME"
+          echo "Target Branch: $CURRENT_BRANCH"
+          echo "Current package.json: $CURRENT_VER"
+          echo "Target Version: $VERSION_NUMBER"
+          echo "NPM Tag: $NPM_DIST_TAG"
+          echo "--------------------"
 
-          # リリースノートをコミットメッセージに含めてコミット
-          git add package.json
-          git commit -m "chore(release): $TAG_NAME [skip ci]" -m "${{ github.event.release.body }}"
-
-          # タグを新コミットに強制移動してpush
-          git tag -f $TAG_NAME
-          git push -f origin $TAG_NAME
-
-          # 2. 元のブランチ（main等）を「今の新しいコミット」まで進める
-          # $CURRENT_BRANCH が 'main' なら origin main へ push する
-          git push origin HEAD:$CURRENT_BRANCH
-
-          # 3. Releaseの参照先を今の新コミットに更新（API経由）
-          curl -L \
-            -X PATCH \
-            -H "Accept: application/vnd.github+json" \
-            -H "Authorization: Bearer ${{ secrets.GITHUB_TOKEN }}" \
-            https://api.github.com/repos/${{ github.repository }}/releases/${{ github.event.release.id }} \
-            -d "{\"target_commitish\":\"$CURRENT_BRANCH\"}"
+          # 3. 必要に応じて package.json を更新
+          if [ "$VERSION_NUMBER" != "$CURRENT_VER" ]; then
+            echo "Updating package.json to $VERSION_NUMBER..."
+            npm version $VERSION_NUMBER --no-git-tag-version
+            
+            # リリースノートをコミットメッセージに含めてコミット
+            git add package.json
+            git commit -m "chore(release): $TAG_NAME [skip ci]" -m "${{ github.event.release.body }}"
+            
+            # ブランチ（main等）を最新のコミットまで進める
+            git push origin HEAD:$CURRENT_BRANCH
+            
+            # タグを「今の新しいコミット」に強制移動してpush
+            git tag -f $TAG_NAME
+            git push -f origin $TAG_NAME
+            
+            # GitHub Release の参照先を、今作ったコミットに更新（API経由）
+            # 新しいコミットIDを取得
+            NEW_SHA=$(git rev-parse HEAD)
+            curl -L \
+              -X PATCH \
+              -H "Accept: application/vnd.github+json" \
+              -H "Authorization: Bearer ${{ secrets.GITHUB_TOKEN }}" \
+              https://api.github.com/repos/${{ github.repository }}/releases/${{ github.event.release.id }} \
+              -d "{\"target_commitish\":\"$NEW_SHA\"}"
+          else
+            echo "Version is already $VERSION_NUMBER. Skipping git-push and release-patch."
+          fi
 
       - name: Publish to npm
-        run: npm publish --provenance --access public --tag ${{ env.NPM_DIST_TAG }}
+        run: npm publish --access public --tag ${{ env.NPM_DIST_TAG }}
