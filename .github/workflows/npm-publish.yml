@@ -25,12 +25,12 @@ jobs:
           git config --global user.name "github-actions[bot]"
           git config --global user.email "github-actions[bot]@users.noreply.github.com"
 
+          # 現在のブランチ名を取得（mainなど）
+          CURRENT_BRANCH=${{ github.event.release.target_commitish }}
           TAG_NAME=${{ github.event.release.tag_name }}
           
-          # 先頭の記号を削る
           CLEAN_TAG=$(echo $TAG_NAME | sed 's/^[^0-9.]*//')
 
-          # '@' があれば左をバージョン、右をnpmタグにする
           if [[ "$CLEAN_TAG" == *"@"* ]]; then
             VERSION_NUMBER=$(echo $CLEAN_TAG | cut -d'@' -f1)
             NPM_DIST_TAG=$(echo $CLEAN_TAG | cut -d'@' -f2)
@@ -53,16 +53,17 @@ jobs:
           git tag -f $TAG_NAME
           git push -f origin $TAG_NAME
 
-          # Releaseが指す先を今の新コミットに更新（API経由）
+          # 2. 元のブランチ（main等）を「今の新しいコミット」まで進める
+          # $CURRENT_BRANCH が 'main' なら origin main へ push する
+          git push origin HEAD:$CURRENT_BRANCH
+
+          # 3. Releaseの参照先を今の新コミットに更新（API経由）
           curl -L \
             -X PATCH \
             -H "Accept: application/vnd.github+json" \
             -H "Authorization: Bearer ${{ secrets.GITHUB_TOKEN }}" \
             https://api.github.com/repos/${{ github.repository }}/releases/${{ github.event.release.id }} \
-            -d "{\"target_commitish\":\"main\"}"
-
-      - name: Push package.json back to main
-        run: git push origin main
+            -d "{\"target_commitish\":\"$CURRENT_BRANCH\"}"
 
       - name: Publish to npm
         run: npm publish --provenance --access public --tag ${{ env.NPM_DIST_TAG }}
