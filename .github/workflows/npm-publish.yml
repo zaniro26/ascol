@@ -1,0 +1,105 @@
+name: Publish to npm
+
+on:
+  release:
+    types: [published]
+  workflow_dispatch:    # 手動実行を許可（テスト用）
+
+jobs:
+  npm_publish:
+    name: Version up package.json and Publish to npm
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write  # allows pushing commits and tags
+      id-token: write  # allows using GITHUB_TOKEN for authentication (for OIDC)
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+          registry-url: 'https://registry.npmjs.org'
+
+      - name: Update package.json
+        run: |
+          git config --global user.name "github-actions[bot]"
+          git config --global user.email "github-actions[bot]@users.noreply.github.com"
+          CURRENT_VER=$(node -p "require('./package.json').version")
+
+          if [ "${{ github.event_name }}" = "release" ]; then
+            # --- 【本番】GitHub Release発行時 ---
+            TAG_NAME=${{ github.event.release.tag_name }}
+            CURRENT_BRANCH=${{ github.event.release.target_commitish }}
+            IS_MAIN_RELEASE=$([ "$CURRENT_BRANCH" = "main" ] && echo "true" || echo "false")
+            
+            CLEAN_TAG=$(echo $TAG_NAME | sed 's/^[^0-9.]*//')
+            if [[ "$CLEAN_TAG" == *"@"* ]]; then
+              VERSION_NUMBER=$(echo $CLEAN_TAG | cut -d'@' -f1)
+              NPM_DIST_TAG=$(echo $CLEAN_TAG | cut -d'@' -f2)
+            else
+              VERSION_NUMBER=$CLEAN_TAG
+              NPM_DIST_TAG="latest"
+            fi
+          else
+            # --- 【テスト】手動実行 (workflow_dispatch) 時 ---
+            # 手動テスト時は99.99.99
+            TAG_NAME="manual-test"
+            CURRENT_BRANCH="${{ github.ref_name }}"
+            VERSION_NUMBER="99.99.99-test.$(date +%s)"
+            NPM_DIST_TAG="test-dry-run"
+            IS_MAIN_RELEASE="false"
+          fi
+          
+          # ステップを跨ぐための環境変数保存
+          echo "IS_MAIN_RELEASE=$IS_MAIN_RELEASE" >> $GITHUB_ENV
+          echo "VERSION_NUMBER=$VERSION_NUMBER" >> $GITHUB_ENV
+          echo "NPM_DIST_TAG=$NPM_DIST_TAG" >> $GITHUB_ENV
+
+          # デバッグ情報の出力
+          CURRENT_VER=$(node -p "require('./package.json').version")
+          echo "--- Release Info ---"
+          echo "Tag: $TAG_NAME"
+          echo "Target Branch: $CURRENT_BRANCH"
+          echo "Current package.json: $CURRENT_VER"
+          echo "Target Version: $VERSION_NUMBER"
+          echo "NPM Tag: $NPM_DIST_TAG"
+          echo "--------------------"
+
+          # package.json の更新
+          if [ "$VERSION_NUMBER" != "$CURRENT_VER" ]; then
+            echo "Changing version to $VERSION_NUMBER..."
+            npm version $VERSION_NUMBER --no-git-tag-version
+          fi
+
+      - name: Git Commit & ReTag & Push
+        run: |
+          # 本番のみのGit操作
+          if [ "${{ env.IS_MAIN_RELEASE }}" = "true" ]; then
+            git add package.json
+            git commit -m "chore(release): $TAG_NAME [skip ci]" -m "${{ github.event.release.body }}"
+            git push origin HEAD:$CURRENT_BRANCH
+            git tag -f $TAG_NAME
+            git push -f origin $TAG_NAME
+            
+            NEW_SHA=$(git rev-parse HEAD)
+            curl -L \
+              -X PATCH \
+              -H "Accept: application/vnd.github+json" \
+              -H "Authorization: Bearer ${{ secrets.GITHUB_TOKEN }}" \
+              https://api.github.com/repos/${{ github.repository }}/releases/${{ github.event.release.id }} \
+              -d "{\"target_commitish\":\"$NEW_SHA\"}"
+          else
+            echo "Dry-run/Test mode: Skipping Git commit and push."
+          fi
+
+      - name: Publish to npm
+        run: |
+          if [ "${{ env.IS_MAIN_RELEASE }}" = "true" ]; then
+            echo "Live Publishing..."
+            npm publish --provenance --access public --tag ${{ env.NPM_DIST_TAG }}
+          else
+            echo "Test Publishing (dry-run)..."
+            npm publish --dry-run --tag ${{ env.NPM_DIST_TAG }}
+          fi
