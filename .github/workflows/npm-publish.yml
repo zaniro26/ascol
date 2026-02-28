@@ -1,0 +1,68 @@
+name: Publish to npm
+
+on:
+  release:
+    types: [published]
+
+jobs:
+  publish:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write  # allows pushing commits and tags
+      id-token: write  # allows using GITHUB_TOKEN for authentication (for OIDC)
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          registry-url: 'https://registry.npmjs.org'
+
+      - name: Update package.json and Retag
+        run: |
+          git config --global user.name "github-actions[bot]"
+          git config --global user.email "github-actions[bot]@users.noreply.github.com"
+
+          TAG_NAME=${{ github.event.release.tag_name }}
+          
+          # 先頭の記号を削る
+          CLEAN_TAG=$(echo $TAG_NAME | sed 's/^[^0-9.]*//')
+
+          # '@' があれば左をバージョン、右をnpmタグにする
+          if [[ "$CLEAN_TAG" == *"@"* ]]; then
+            VERSION_NUMBER=$(echo $CLEAN_TAG | cut -d'@' -f1)
+            NPM_DIST_TAG=$(echo $CLEAN_TAG | cut -d'@' -f2)
+          else
+            VERSION_NUMBER=$CLEAN_TAG
+            NPM_DIST_TAG="latest"
+          fi
+
+          echo "VERSION_NUMBER=$VERSION_NUMBER" >> $GITHUB_ENV
+          echo "NPM_DIST_TAG=$NPM_DIST_TAG" >> $GITHUB_ENV
+
+          # package.json 更新
+          npm version $VERSION_NUMBER --no-git-tag-version
+
+          # リリースノートをコミットメッセージに含めてコミット
+          git add package.json
+          git commit -m "chore(release): $TAG_NAME [skip ci]" -m "${{ github.event.release.body }}"
+
+          # タグを新コミットに強制移動してpush
+          git tag -f $TAG_NAME
+          git push -f origin $TAG_NAME
+
+          # Releaseが指す先を今の新コミットに更新（API経由）
+          curl -L \
+            -X PATCH \
+            -H "Accept: application/vnd.github+json" \
+            -H "Authorization: Bearer ${{ secrets.GITHUB_TOKEN }}" \
+            https://api.github.com/repos/${{ github.repository }}/releases/${{ github.event.release.id }} \
+            -d "{\"target_commitish\":\"main\"}"
+
+      - name: Push package.json back to main
+        run: git push origin main
+
+      - name: Publish to npm
+        run: npm publish --provenance --access public --tag ${{ env.NPM_DIST_TAG }}
