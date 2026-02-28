@@ -84,4 +84,4 @@ jobs:
           fi
 
       - name: Publish to npm
-        run: npm publish --access public --tag ${{ env.NPM_DIST_TAG }}
+        run: npm publish --provenance --access public --tag ${{ env.NPM_DIST_TAG }}
