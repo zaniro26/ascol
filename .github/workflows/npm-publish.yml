@@ -30,17 +30,14 @@ jobs:
           node-version: '24'
           registry-url: 'https://registry.npmjs.org'
 
-      - name: Update package.json
+      - name: Resolve new version number and NPM dist-tag
         run: |
-          git config --global user.name "github-actions[bot]"
-          git config --global user.email "github-actions[bot]@users.noreply.github.com"
-          CURRENT_VER=$(node -p "require('./package.json').version")
-
+          # Release event or Manual trigger (workflow_dispatch)
           if [ "${{ github.event_name }}" = "release" ]; then
-            # --- 【本番】GitHub Release発行時 ---
+            # --- GitHub Release ---
             TAG_NAME=${{ github.event.release.tag_name }}
             CURRENT_BRANCH=${{ github.event.release.target_commitish }}
-            IS_MAIN_RELEASE=$([ "$CURRENT_BRANCH" = "main" ] && echo "true" || echo "false")
+            IS_PROD=$([ "$CURRENT_BRANCH" = "main" ] && echo "true" || echo "false")
             
             CLEAN_TAG=$(echo $TAG_NAME | sed 's/^[^0-9.]*//')
             if [[ "$CLEAN_TAG" == *"@"* ]]; then
@@ -51,22 +48,26 @@ jobs:
               NPM_DIST_TAG="latest"
             fi
           else
-            # --- 【テスト】手動実行 (workflow_dispatch) 時 ---
-            # 手動テスト時は99.99.99
+            # --- manual trigger (workflow_dispatch) ---
             TAG_NAME="manual-test"
             CURRENT_BRANCH="${{ github.ref_name }}"
+            IS_PROD="false"
             VERSION_NUMBER="99.99.99-test.$(date +%s)"
             NPM_DIST_TAG="test-dry-run"
-            IS_MAIN_RELEASE="false"
           fi
-          
-          # ステップを跨ぐための環境変数保存
-          echo "IS_MAIN_RELEASE=$IS_MAIN_RELEASE" >> $GITHUB_ENV
+          # get current version from package.json
+          CURRENT_VER=$(node -p "require('./package.json').version")
+
+          # export variables for subsequent steps
+          echo "CURRENT_VER=$CURRENT_VER" >> $GITHUB_ENV
+          echo "TAG_NAME=$TAG_NAME" >> $GITHUB_ENV
+          echo "CURRENT_BRANCH=$CURRENT_BRANCH" >> $GITHUB_ENV
+          echo "IS_PROD=$IS_PROD" >> $GITHUB_ENV
           echo "VERSION_NUMBER=$VERSION_NUMBER" >> $GITHUB_ENV
           echo "NPM_DIST_TAG=$NPM_DIST_TAG" >> $GITHUB_ENV
 
-          # デバッグ情報の出力
-          CURRENT_VER=$(node -p "require('./package.json').version")
+      - name: Updated package.json
+        run: |
           echo "--- Release Info ---"
           echo "Tag: $TAG_NAME"
           echo "Target Branch: $CURRENT_BRANCH"
@@ -75,22 +76,41 @@ jobs:
           echo "NPM Tag: $NPM_DIST_TAG"
           echo "--------------------"
 
-          # package.json の更新
+          # update package.json
           if [ "$VERSION_NUMBER" != "$CURRENT_VER" ]; then
             echo "Changing version to $VERSION_NUMBER..."
             npm version $VERSION_NUMBER --no-git-tag-version
+          else
+            echo "Version in package.json is already $VERSION_NUMBER. No change needed."
           fi
 
       - name: Git Commit & ReTag & Push
+        env:
+          RELEASE_BODY: ${{ github.event.release.body }}  # release note body
         run: |
+          # git config for GitHub Actions bot
+          git config --global user.name "github-actions[bot]"
+          git config --global user.email "github-actions[bot]@users.noreply.github.com"
+
+          # commit message: "chore(release): x.y.z [skip ci]\n\nRelease notes body..."
+          echo "chore(release): $VERSION_NUMBER [skip ci]" > commit_msg.txt
+          echo "" >> commit_msg.txt
+          echo "$RELEASE_BODY" >> commit_msg.txt
+
           # 本番のみのGit操作
-          if [ "${{ env.IS_MAIN_RELEASE }}" = "true" ]; then
+          if [ "$IS_PROD" = "true" ]; then
+            # commit
             git add package.json
-            git commit -m "chore(release): $TAG_NAME [skip ci]" -m "${{ github.event.release.body }}"
+            git commit -aF commit_msg.txt
+
+            # push to the target branch
             git push origin HEAD:$CURRENT_BRANCH
+            
+            # Update the tag to point to the new commit
             git tag -f $TAG_NAME
             git push -f origin $TAG_NAME
             
+            # Update GitHub Release to point to the new commit
             NEW_SHA=$(git rev-parse HEAD)
             curl -L \
               -X PATCH \
@@ -104,10 +124,10 @@ jobs:
 
       - name: Publish to npm
         run: |
-          if [ "${{ env.IS_MAIN_RELEASE }}" = "true" ]; then
+          if [ "$IS_PROD" = "true" ]; then
             echo "Live Publishing..."
-            npm publish --provenance --access public --tag ${{ env.NPM_DIST_TAG }}
+            npm publish --provenance --access public --tag $NPM_DIST_TAG
           else
             echo "Test Publishing (dry-run)..."
-            npm publish --dry-run --tag ${{ env.NPM_DIST_TAG }}
+            npm publish --dry-run --tag $NPM_DIST_TAG
           fi
