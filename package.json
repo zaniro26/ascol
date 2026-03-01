@@ -4,6 +4,14 @@
   "description": "Simplified Google Apps Script deploy management: A user-friendly clasp wrapper.",
   "author": "Zaniro26 <zaniro26@gmail.com> (https://github.com/zaniro26/)",
   "license": "MIT",
+  "engines": {
+    "node": ">=16.0.0"
+  },
+  "files": [
+    "src",
+    "README.md",
+    "LICENSE"
+  ],
   "repository": {
     "type": "git",
     "url": "git+https://github.com/zaniro26/ascol.git"
