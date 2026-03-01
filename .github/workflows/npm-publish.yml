@@ -32,8 +32,6 @@ jobs:
 
       - name: Update package.json
         run: |
-          git config --global user.name "github-actions[bot]"
-          git config --global user.email "github-actions[bot]@users.noreply.github.com"
           CURRENT_VER=$(node -p "require('./package.json').version")
 
           if [ "${{ github.event_name }}" = "release" ]; then
@@ -82,15 +80,32 @@ jobs:
           fi
 
       - name: Git Commit & ReTag & Push
+        env:
+          RELEASE_BODY: ${{ github.event.release.body }}  # release note body
         run: |
           # 本番のみのGit操作
-          if [ "${{ env.IS_MAIN_RELEASE }}" = "true" ]; then
+          if [ "$IS_MAIN_RELEASE" = "true" ]; then
+            # git config for GitHub Actions bot
+            git config --global user.name "github-actions[bot]"
+            git config --global user.email "github-actions[bot]@users.noreply.github.com"
+
+            # commit message: "chore(release): x.y.z [skip ci]\n\nRelease notes body..."
+            echo "chore(release): $VERSION_NUMBER [skip ci]" > commit_msg.txt
+            echo "" >> commit_msg.txt
+            echo "$RELEASE_BODY" >> commit_msg.txt
+
+            # commit
             git add package.json
-            git commit -m "chore(release): $TAG_NAME [skip ci]" -m "${{ github.event.release.body }}"
+            git commit -aF commit_msg.txt
+
+            # push to the target branch
             git push origin HEAD:$CURRENT_BRANCH
+            
+            # Update the tag to point to the new commit
             git tag -f $TAG_NAME
             git push -f origin $TAG_NAME
             
+            # Update GitHub Release to point to the new commit
             NEW_SHA=$(git rev-parse HEAD)
             curl -L \
               -X PATCH \
@@ -104,10 +119,10 @@ jobs:
 
       - name: Publish to npm
         run: |
-          if [ "${{ env.IS_MAIN_RELEASE }}" = "true" ]; then
+          if [ "$IS_MAIN_RELEASE" = "true" ]; then
             echo "Live Publishing..."
-            npm publish --provenance --access public --tag ${{ env.NPM_DIST_TAG }}
+            npm publish --provenance --access public --tag $NPM_DIST_TAG
           else
             echo "Test Publishing (dry-run)..."
-            npm publish --dry-run --tag ${{ env.NPM_DIST_TAG }}
+            npm publish --dry-run --tag $NPM_DIST_TAG
           fi
