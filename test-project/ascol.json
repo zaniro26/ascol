@@ -1,21 +1,18 @@
 {
-  "scriptId": "1StAHqObwMxLb-vXECo5HKccR1uK4seB3w7nqjl6eXwdAMhKKejJEudtQ",
+  "scriptId": "1SZQdgudRZFVfapDcjzKfsGtTeVyPOymzs-bzfYkXFFRNFtAQR6svys5y",
   "build": {
     "srcDir": "src",
     "distDir": "dist",
     "transpile": {
-      "clientSourceDir": "src/client/",
-      "serverSourceDir": "src/gas/",
-      "serverScriptFiles": [
-        "src/code.js",
-        "src/コード.js"
+      "clientSourceDirs": [
+        "src/client/"
       ]
     }
   },
   "deployments": [
     {
       "name": "head",
-      "id": "AKfycbxyVctxBugh8kKTGMxyAmgzTzZGmNEeF6ZxS7mrt4Hu"
+      "id": "AKfycbx6Zf5g6XGFz9lk0U5g6vk1hQlUfz2STPUhZdfF3ARI"
     }
   ]
 }
